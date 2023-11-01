@@ -9,8 +9,8 @@ Official code for CFNet
 
 ## NEWS
 
-- [2023-02-24] CFNet is accepted by CVPR 2023
-- [2022-11-17] CFNet achieves the 63.4 PQ and 68.3 mIoU on the SemanticKITTI LiDAR Panoptic Segmentation Benchmark with the inference latency of 43.5 ms on a single NVIDIA RTX 3090 GPU.
+- [2023-02-24] CFNet is accepted by **CVPR 2023**
+- [2022-11-17] CFNet achieves the **63.4 PQ** and **68.3 mIoU** on the SemanticKITTI LiDAR Panoptic Segmentation Benchmark with the inference latency of **43.5 ms** on a single NVIDIA RTX 3090 GPU.
 ![teaser](./imgs/acc_vs_speed.PNG)
 
 #### 1 Dependency
