@@ -82,3 +82,18 @@ python3 -m torch.distributed.launch --nproc_per_node=8 train.py --config config/
 ```bash
 python3 -m torch.distributed.launch --nproc_per_node=8 evaluate.py --config config/config_mvfcev2ctx_sgd_wce_fp32_lossv2_single_newcpaug.py --start_epoch 0 --end_epoch 47
 ```
+
+
+## Citations
+```bash
+@inproceedings{licfnet2023,
+  author={Li, Xiaoyan and Zhang, Gang and Wang, Boyue and Hu, Yongli and Yin, Baocai},
+  booktitle={2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 
+  title={Center Focusing Network for Real-Time LiDAR Panoptic Segmentation}, 
+  year={2023},
+  volume={},
+  number={},
+  pages={13425-13434},
+  doi={10.1109/CVPR52729.2023.01290}
+}
+```
