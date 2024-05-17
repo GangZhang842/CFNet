@@ -1,15 +1,12 @@
 import numpy as np
 import random
 
-import cv2
-import json
-import os
-
+from scipy.spatial.transform import Rotation as R
 from scipy.spatial import Delaunay
 
 
 def gene_ins_label(pcds_label_use, inst_label):
-    pcds_ins_label = np.full((pcds_label_use.shape[0],), -1, dtype=np.long)
+    pcds_ins_label = np.full((pcds_label_use.shape[0],), -1, dtype=np.int64)
     ins_num = 0
     for cate_id in range(1, 9):
         valid_mask_cate_id = (pcds_label_use == cate_id)
@@ -27,7 +24,7 @@ def gene_ins_label(pcds_label_use, inst_label):
 def gene_point_offset(pcds_total, center_type='mass'):
     assert center_type in ['mass', 'axis']
     pcds_xyz = pcds_total[:, :3]
-    pcds_ins_label = pcds_total[:, 5].astype(np.long)
+    pcds_ins_label = pcds_total[:, 5].astype(np.int64)
 
     pcds_offset = np.zeros((pcds_xyz.shape[0], 3), dtype=np.float32)
     if center_type == 'mass':
@@ -255,6 +252,6 @@ class DataAugment:
         
         #random rotate on xy plane
         theta_z = random_float(self.theta_range)
-        rotateMatrix = cv2.getRotationMatrix2D((0, 0), theta_z, 1.0)[:, :2].T
+        rotateMatrix = R.from_euler('z', theta_z, degrees=True).as_matrix()[:2, :2].T
         pcds[:, :2] = pcds[:, :2].dot(rotateMatrix)
         return pcds

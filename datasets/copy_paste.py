@@ -1,8 +1,8 @@
 import numpy as np
 import random
-import yaml
 import os
-import cv2
+
+from scipy.spatial.transform import Rotation as R
 from scipy.spatial import Delaunay
 
 import pdb
@@ -44,7 +44,7 @@ def compute_box_3d(center, size, yaw):
 
 
 def rotate_along_z(pcds, theta):
-    rotateMatrix = cv2.getRotationMatrix2D((0, 0), theta, 1.0)[:, :2].T
+    rotateMatrix = R.from_euler('z', theta, degrees=True).as_matrix()[:2, :2].T
     pcds[:, :2] = pcds[:, :2].dot(rotateMatrix)
     return pcds
 
@@ -71,6 +71,7 @@ class CutPaste:
             fpath = os.path.join(self.object_dir, fp)
             fname_list = [os.path.join(fpath, x) for x in os.listdir(fpath) if (x.endswith('.npz')) and (x.split('_')[0] != '08')]
             print('Load {0}: {1}'.format(fp, len(fname_list)))
+            fname_list = sorted(fname_list)
             self.sub_dirs_dic[fp] = fname_list
         
         self.paste_max_obj_num = paste_max_obj_num

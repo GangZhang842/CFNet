@@ -1,180 +1,121 @@
 import os
-import random
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import argparse
-import time
-import pdb
 
+import models
+import datasets
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-import datasets
+from utils.config_parser import get_module
+from light_trainer import trainer, recorder
 
-from models import *
-
-import tqdm
-import logging
+import argparse
 import importlib
-from utils.logger import config_logger
-from utils import builder
 
 
 import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
 cudnn.benchmark = False
 
-
-def reduce_tensor(inp):
-    """
-    Reduce the loss from all processes so that
-    process with rank 0 has the averaged results.
-    """
-    world_size = torch.distributed.get_world_size()
-    if world_size < 2:
-        return inp
-    with torch.no_grad():
-        reduced_inp = inp
-        torch.distributed.reduce(reduced_inp, dst=0)
-    return reduced_inp
+import pdb
 
 
-def train_fp16(epoch, end_epoch, args, model, train_loader, optimizer, scheduler, logger, log_frequency):
-    scaler = torch.cuda.amp.GradScaler()
-    rank = torch.distributed.get_rank()
-    model.train()
-    for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
-        pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, seq_id, fn) in tqdm.tqdm(enumerate(train_loader)):
-        #pdb.set_trace()
-        with torch.cuda.amp.autocast():
-            loss = model(pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
-                pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw)
-        
-        # sync all gpus
-        reduced_loss = reduce_tensor(loss)
-
-        optimizer.zero_grad()
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        scheduler.step()
-        if (i % log_frequency == 0) and rank == 0:
-            string = 'Epoch: [{}]/[{}]; Iteration: [{}]/[{}]; lr: {}'.format(epoch, end_epoch,\
-                i, len(train_loader), optimizer.state_dict()['param_groups'][0]['lr'])
-            
-            string = string + '; loss: {}'.format(reduced_loss.item() / torch.distributed.get_world_size())
-            logger.info(string)
+def save_dataset(dataloader):
+    import pickle as pkl
+    process_group = torch.distributed.group.WORLD
+    global_rank = torch.distributed.get_rank(process_group)
+    data_list = []
+    for data in dataloader:
+        seq_id = data[-2]
+        fn = data[-1]
+        key = f"{seq_id}/{fn}"
+        data_list.append(key)
+    
+    print(global_rank, len(set(data_list)), len(data_list))
 
 
-def train(epoch, end_epoch, args, model, train_loader, optimizer, scheduler, logger, log_frequency):
-    rank = torch.distributed.get_rank()
-    model.train()
-    for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
-        pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, seq_id, fn) in tqdm.tqdm(enumerate(train_loader)):
-        #pdb.set_trace()
-        loss = model(pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
-            pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw)
-        
-        # sync all gpus
-        reduced_loss = reduce_tensor(loss)
-        
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
-        if (i % log_frequency == 0) and rank == 0:
-            string = 'Epoch: [{}]/[{}]; Iteration: [{}]/[{}]; lr: {}'.format(epoch, end_epoch,\
-                i, len(train_loader), optimizer.state_dict()['param_groups'][0]['lr'])
-            
-            string = string + '; loss: {}'.format(reduced_loss.item() / torch.distributed.get_world_size())
-            logger.info(string)
+def save_dataloader(dataloader, fpath):
+    import pickle as pkl
+    process_group = torch.distributed.group.WORLD
+    global_rank = torch.distributed.get_rank(process_group)
+    data_list = []
+    if not os.path.exists(fpath):
+        os.system("mkdir -p {}".format(fpath))
+    
+    fname_pkl = os.path.join(fpath, f"rank_{global_rank}.pkl")
+    for data in dataloader:
+        seq_id_list = data[-2]
+        fn_list = data[-1]
+        for i in range(len(seq_id_list)):
+            key = f"{seq_id_list[i]}/{fn_list[i]}"
+            data_list.append(key)
+    
+    print(global_rank, len(set(data_list)), len(data_list))
+    with open(fname_pkl, "wb") as f:
+        pkl.dump(data_list, f)
 
 
 def main(args, config):
     # parsing cfg
-    pGen, pDataset, pModel, pOpt = config.get_config()
+    pGen, pDataset, pModel = config.get_config()
 
     prefix = pGen.name
-    save_path = os.path.join("experiments", prefix)
-    model_prefix = os.path.join(save_path, "checkpoint")
-
-    os.system('mkdir -p {}'.format(model_prefix))
-
-    # start logging
-    config_logger(os.path.join(save_path, "log.txt"))
-    logger = logging.getLogger()
-
-    # reset dist
-    device = torch.device('cuda:{}'.format(args.local_rank))
-    torch.cuda.set_device(args.local_rank)
-    torch.distributed.init_process_group(backend='nccl', init_method='env://')
-    world_size = torch.distributed.get_world_size()
-    rank = torch.distributed.get_rank()
-
-    # reset random seed
-    seed = rank * pDataset.Train.num_workers + 50051
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    trainer.init_env(seed=5120)
 
     # define dataloader
-    train_dataset = eval('datasets.{}.DataloadTrain'.format(pDataset.Train.data_src))(pDataset.Train)
+    train_dataset = get_module(type=pDataset.Train.type, config=pDataset.Train)
     train_sampler = DistributedSampler(train_dataset)
     train_loader = DataLoader(train_dataset,
                             batch_size=pGen.batch_size_per_gpu,
                             shuffle=(train_sampler is None),
                             num_workers=pDataset.Train.num_workers,
                             sampler=train_sampler,
-                            pin_memory=True)
-
-    print("rank: {}/{}; batch_size: {}".format(rank, world_size, pGen.batch_size_per_gpu))
-
-    # define model
-    base_net = eval(pModel.prefix).AttNet(pModel)
-    # load pretrain model
-    pretrain_model = os.path.join(model_prefix, '{}-model.pth'.format(pModel.pretrain.pretrain_epoch))
-    if os.path.exists(pretrain_model):
-        base_net.load_state_dict(torch.load(pretrain_model, map_location='cpu'))
-        logger.info("Load model from {}".format(pretrain_model))
-
-    base_net = nn.SyncBatchNorm.convert_sync_batchnorm(base_net)
-    model = torch.nn.parallel.DistributedDataParallel(base_net.to(device),
-                                                    device_ids=[args.local_rank],
-                                                    output_device=args.local_rank,
-                                                    find_unused_parameters=True)
-
-    # define optimizer
-    optimizer = builder.get_optimizer(pOpt, model)
-
-    # define scheduler
-    per_epoch_num_iters = len(train_loader)
-    scheduler = builder.get_scheduler(optimizer, pOpt, per_epoch_num_iters)
-
-    if rank == 0:
-        logger.info(model)
-        logger.info(optimizer)
-        logger.info(scheduler)
-
-    # start training
-    for epoch in range(pOpt.schedule.begin_epoch, pOpt.schedule.end_epoch):
-        train_sampler.set_epoch(epoch)
-        if pGen.fp16:
-            train_fp16(epoch, pOpt.schedule.end_epoch, args, model, train_loader, optimizer, scheduler, logger, pGen.log_frequency)
-        else:
-            train(epoch, pOpt.schedule.end_epoch, args, model, train_loader, optimizer, scheduler, logger, pGen.log_frequency)
-
-        # save model
-        if rank == 0:
-            torch.save(model.module.state_dict(), os.path.join(model_prefix, '{}-model.pth'.format(epoch)))
+                        )
+    
+    val_dataset = get_module(type=pDataset.Val.type, config=pDataset.Val)
+    val_sampler = DistributedSampler(val_dataset)
+    val_loader = DataLoader(val_dataset,
+                            batch_size=1,
+                            shuffle=(val_sampler is None),
+                            num_workers=pDataset.Val.num_workers,
+                            sampler=val_sampler,
+                        )
+    
+    # define recorder, model, and trainer
+    txt_recorder = recorder.txt_recorder.TXTRecorder(
+        save_dir=os.path.join("./experiments", pGen.name),
+        version=args.version,
+        save_topk_model=5,
+        mode='max')
+    
+    model = get_module(type=pModel.type, pModel=pModel)
+    model_trainer = eval(pModel.runner_type)(
+        recorder=txt_recorder,
+        max_epochs=pModel.scheduler.max_epochs,
+        precision=args.precision,
+        log_every_n_steps=args.log_frequency,
+        sync_batchnorm=True,
+        pModel=pModel,
+        per_epoch_num_iters=len(train_loader)
+    )
+    if (args.pretrain_model != None) and (os.path.exists(args.pretrain_model)):
+        print('Load pretrain model: {}'.format(args.pretrain_model))
+        model.load_state_dict(torch.load(args.pretrain_model, map_location='cpu')['model_dic'], strict=False)
+    
+    model_trainer.fit(model, train_dataloader=train_loader, val_dataloader=val_loader, ckpt_path=args.resume_ckpt, find_unused_parameters=False)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='lidar segmentation')
+    parser = argparse.ArgumentParser(description='lidar panoptic segmentation')
     parser.add_argument('--config', help='config file path', type=str)
-    parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--log_frequency', help='number of devices', type=int, default=100)
+    parser.add_argument('--precision', help='precision of the float number', type=str, default="fp32")
+
+    parser.add_argument('--pretrain_model', help='pretrain model', type=str, default=None)
+    parser.add_argument('--resume_ckpt', help='resume checkpoint', type=str, default=None)
+    parser.add_argument('--version', help='version name of the experiment', type=str, default="version")
 
     args = parser.parse_args()
     config = importlib.import_module(args.config.replace('.py', '').replace('/', '.'))

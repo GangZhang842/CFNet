@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable, Function
 
-import deep_point
 import pytorch_lib
 
 from .lovasz_losses import lovasz_softmax
@@ -71,16 +70,16 @@ class BCE_OHEM(nn.Module):
 
 
 class PanopticLossv1(nn.Module):
-    def __init__(self, config):
+    def __init__(self, ce_weight, lovasz_weight, center_weight, offset_weight, sigma, ignore_index, loss_seg_dic, loss_ins_dic):
         super(PanopticLossv1, self).__init__()
-        self.ce_weight = config.ce_weight
-        self.lovasz_weight = config.lovasz_weight
-        self.center_weight = config.center_weight
-        self.offset_weight = config.offset_weight
-        self.sigma = config.sigma
-        self.ignore_index = config.ignore_index
-        loss_seg_dic = config.loss_seg_dic
-        loss_ins_dic = config.loss_ins_dic
+        self.ce_weight = ce_weight
+        self.lovasz_weight = lovasz_weight
+        self.center_weight = center_weight
+        self.offset_weight = offset_weight
+        self.sigma = sigma
+        self.ignore_index = ignore_index
+        loss_seg_dic = loss_seg_dic
+        loss_ins_dic = loss_ins_dic
 
         # seg loss
         self.criterion_seg = None
@@ -94,7 +93,7 @@ class PanopticLossv1(nn.Module):
                 class_weight = torch.FloatTensor(loss_seg_dic['class_weight'])
             else:
                 with open('datasets/semantic-kitti.yaml', 'r') as f:
-                    task_cfg = yaml.load(f)
+                    task_cfg = yaml.safe_load(f)
                     content = torch.zeros(len(task_cfg['learning_ignore']), dtype=torch.float32)
                     for cl, freq in task_cfg["content"].items():
                         x_cl = task_cfg['learning_map'][cl]
@@ -104,7 +103,7 @@ class PanopticLossv1(nn.Module):
                     class_weight[self.ignore_index] = 0
             
             print("Class weights: ", class_weight)
-            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight)
+            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight.cuda())
         else:
             raise Exception('loss_mode must in ["ce", "wce", "ohem"]')
 
@@ -141,16 +140,16 @@ class PanopticLossv1(nn.Module):
 
 
 class PanopticLossv2(nn.Module):
-    def __init__(self, config):
+    def __init__(self, ce_weight, lovasz_weight, center_weight, offset_weight, sigma, ignore_index, loss_seg_dic, loss_ins_dic):
         super(PanopticLossv2, self).__init__()
-        self.ce_weight = config.ce_weight
-        self.lovasz_weight = config.lovasz_weight
-        self.center_weight = config.center_weight
-        self.offset_weight = config.offset_weight
-        self.sigma = config.sigma
-        self.ignore_index = config.ignore_index
-        loss_seg_dic = config.loss_seg_dic
-        loss_ins_dic = config.loss_ins_dic
+        self.ce_weight = ce_weight
+        self.lovasz_weight = lovasz_weight
+        self.center_weight = center_weight
+        self.offset_weight = offset_weight
+        self.sigma = sigma
+        self.ignore_index = ignore_index
+        loss_seg_dic = loss_seg_dic
+        loss_ins_dic = loss_ins_dic
 
         # seg loss
         self.criterion_seg = None
@@ -164,7 +163,7 @@ class PanopticLossv2(nn.Module):
                 class_weight = torch.FloatTensor(loss_seg_dic['class_weight'])
             else:
                 with open('datasets/semantic-kitti.yaml', 'r') as f:
-                    task_cfg = yaml.load(f)
+                    task_cfg = yaml.safe_load(f)
                     content = torch.zeros(len(task_cfg['learning_ignore']), dtype=torch.float32)
                     for cl, freq in task_cfg["content"].items():
                         x_cl = task_cfg['learning_map'][cl]
@@ -174,10 +173,10 @@ class PanopticLossv2(nn.Module):
                     class_weight[self.ignore_index] = 0
             
             print("Class weights: ", class_weight)
-            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight)
+            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight.cuda())
         else:
             raise Exception('loss_mode must in ["ce", "wce", "ohem"]')
-
+        
         # ins loss
         self.center_loss = BCE_OHEM(top_ratio=loss_ins_dic['top_ratio'], top_weight=loss_ins_dic['top_weight'])
     
@@ -211,16 +210,16 @@ class PanopticLossv2(nn.Module):
 
 
 class PanopticLossv2_single(nn.Module):
-    def __init__(self, config):
+    def __init__(self, ce_weight, lovasz_weight, center_weight, offset_weight, sigma, ignore_index, loss_seg_dic, loss_ins_dic):
         super(PanopticLossv2_single, self).__init__()
-        self.ce_weight = config.ce_weight
-        self.lovasz_weight = config.lovasz_weight
-        self.center_weight = config.center_weight
-        self.offset_weight = config.offset_weight
-        self.sigma = config.sigma
-        self.ignore_index = config.ignore_index
-        loss_seg_dic = config.loss_seg_dic
-        loss_ins_dic = config.loss_ins_dic
+        self.ce_weight = ce_weight
+        self.lovasz_weight = lovasz_weight
+        self.center_weight = center_weight
+        self.offset_weight = offset_weight
+        self.sigma = sigma
+        self.ignore_index = ignore_index
+        loss_seg_dic = loss_seg_dic
+        loss_ins_dic = loss_ins_dic
 
         # seg loss
         self.criterion_seg = None
@@ -234,7 +233,7 @@ class PanopticLossv2_single(nn.Module):
                 class_weight = torch.FloatTensor(loss_seg_dic['class_weight'])
             else:
                 with open('datasets/semantic-kitti.yaml', 'r') as f:
-                    task_cfg = yaml.load(f)
+                    task_cfg = yaml.safe_load(f)
                     content = torch.zeros(len(task_cfg['learning_ignore']), dtype=torch.float32)
                     for cl, freq in task_cfg["content"].items():
                         x_cl = task_cfg['learning_map'][cl]
@@ -244,7 +243,7 @@ class PanopticLossv2_single(nn.Module):
                     class_weight[self.ignore_index] = 0
             
             print("Class weights: ", class_weight)
-            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight)
+            self.criterion_seg = nn.CrossEntropyLoss(weight=class_weight.cuda())
         else:
             raise Exception('loss_mode must in ["ce", "wce", "ohem"]')
 

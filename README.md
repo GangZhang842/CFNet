@@ -16,10 +16,12 @@ Official code for CFNet
 #### 1 Dependency
 
 ```bash
-CUDA>=10.1
-Pytorch>=1.5.1
-PyYAML@5.4.1
-scipy@1.3.1
+CUDA>=11.1
+Pytorch>=1.10.0
+PyYAML>=6.0.0
+scipy
+
+pip3 install -r requirements.txt
 ```
 
 #### 2 Training Process
@@ -60,7 +62,7 @@ And download the [object bank](https://drive.google.com/file/d/1QdSpkMLixvKQL6QP
 
 ```
 ./data
-    ├── object_bank
+    ├── object_bank_semkitti
         ├── bicycle
         ├── bicyclist
         ├── car
@@ -74,13 +76,13 @@ And download the [object bank](https://drive.google.com/file/d/1QdSpkMLixvKQL6QP
 ##### 2.3 Training Script
 
 ```bash
-python3 -m torch.distributed.launch --nproc_per_node=8 train.py --config config/config_mvfcev2ctx_sgd_wce_fp32_lossv2_single_newcpaug.py
+torchrun --nproc_per_node=8 train.py --config config/semantickitti/config_mvfcev2ctx_adam_wce_lossv2_single.py --precision "fp32"
 ```
 
 #### 3 Evaluate Process
 
 ```bash
-python3 -m torch.distributed.launch --nproc_per_node=8 evaluate.py --config config/config_mvfcev2ctx_sgd_wce_fp32_lossv2_single_newcpaug.py --start_epoch 0 --end_epoch 47
+torchrun --nproc_per_node=8 evaluate.py --config config/semantickitti/config_mvfcev2ctx_adam_wce_lossv2_single.py --precision "fp32" --resume_ckpt ${model_path}
 ```
 
 

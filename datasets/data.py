@@ -50,7 +50,7 @@ class DataloadTrain(Dataset):
         self.frame_point_num = config.frame_point_num
         self.Voxel = config.Voxel
         with open('datasets/semantic-kitti.yaml', 'r') as f:
-            self.task_cfg = yaml.load(f)
+            self.task_cfg = yaml.safe_load(f)
         
         self.cp_aug = None
         if config.CopyPasteAug.is_use:
@@ -74,11 +74,11 @@ class DataloadTrain(Dataset):
             fpath = os.path.join(config.SeqDir, seq_id)
             fpath_pcds = os.path.join(fpath, 'velodyne')
             fpath_labels = os.path.join(fpath, 'labels')
-            for fn in os.listdir(fpath_pcds):
-                if fn.endswith('.bin'):
-                    fname_pcds = os.path.join(fpath_pcds, fn)
-                    fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
-                    self.flist.append((fname_pcds, fname_labels, seq_id, fn))
+            file_list_length = len([x for x in os.listdir(fpath_pcds) if x.endswith('.bin')])
+            for fn_id in range(file_list_length):
+                fname_pcds = os.path.join(fpath_pcds, f"{str(fn_id).rjust(6, '0')}.bin")
+                fname_labels = os.path.join(fpath_labels, f"{str(fn_id).rjust(6, '0')}.label")
+                self.flist.append((fname_pcds, fname_labels, seq_id, f"{str(fn_id).rjust(6, '0')}.bin"))
         
         print('Training Samples: ', len(self.flist))
 
@@ -110,8 +110,8 @@ class DataloadTrain(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
 
@@ -143,8 +143,8 @@ class DataloadTrain(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
 
@@ -193,18 +193,18 @@ class DataloadVal(Dataset):
         self.frame_point_num = config.frame_point_num
         self.Voxel = config.Voxel
         with open('datasets/semantic-kitti.yaml', 'r') as f:
-            self.task_cfg = yaml.load(f)
+            self.task_cfg = yaml.safe_load(f)
         
         seq_split = [str(i).rjust(2, '0') for i in self.task_cfg['split']['valid']]
         for seq_id in seq_split:
             fpath = os.path.join(config.SeqDir, seq_id)
             fpath_pcds = os.path.join(fpath, 'velodyne')
             fpath_labels = os.path.join(fpath, 'labels')
-            for fn in os.listdir(fpath_pcds):
-                if fn.endswith('.bin'):
-                    fname_pcds = os.path.join(fpath_pcds, fn)
-                    fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
-                    self.flist.append((fname_pcds, fname_labels, seq_id, fn))
+            file_list_length = len([x for x in os.listdir(fpath_pcds) if x.endswith('.bin')])
+            for fn_id in range(file_list_length):
+                fname_pcds = os.path.join(fpath_pcds, f"{str(fn_id).rjust(6, '0')}.bin")
+                fname_labels = os.path.join(fpath_labels, f"{str(fn_id).rjust(6, '0')}.label")
+                self.flist.append((fname_pcds, fname_labels, seq_id, f"{str(fn_id).rjust(6, '0')}.bin"))
         
         print('Validation Samples: ', len(self.flist))
     
@@ -233,8 +233,8 @@ class DataloadVal(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
     
@@ -285,7 +285,7 @@ class DataloadVal(Dataset):
         pcds_sem_label = torch.stack(pcds_sem_label_list, dim=0)
         pcds_ins_label = torch.stack(pcds_ins_label_list, dim=0)
         pcds_offset = torch.stack(pcds_offset_list, dim=0)
-        pano_label = torch.LongTensor(pano_label.astype(np.long))
+        pano_label = torch.LongTensor(pano_label.astype(np.int64))
         return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, pano_label, seq_id, fn
     
     def __len__(self):
